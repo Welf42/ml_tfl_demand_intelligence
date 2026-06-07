@@ -1,0 +1,11 @@
+data/Nov09JnyExport.csv
+data/Nov09JnyExport.csv.zip
+notes/
+
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+data/processed/
+models/
