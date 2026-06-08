@@ -55,37 +55,38 @@ See mobility question and use case above.
 
 ## 02 — Data
 
-**Exploration:**
+**Raw exploration (`02_data_raw_plots.py`):**
 
 - inspect journey records and column types,
 - understand available modes (Bus, Underground, DLR, National Rail, Overground, Tram),
-- inspect origin/destination fields,
-- inspect temporal fields,
-- check missing and anomalous values,
-- create peak/off-peak labels.
-
-Questions:
-
-- Which modes dominate?
-- Which origins and destinations are busiest?
-- How does demand differ by time period?
-- Are there directional peak patterns?
-- Are there clear commute corridors?
+- inspect origin/destination fields and surface non-station values,
+- inspect temporal fields — how EntTime and ExTime differ by mode,
+- surface data quality issues that justify cleaning.
 
 Visuals:
 
-- demand by mode,
-- demand by hour,
-- top origins,
-- top destinations,
-- top OD pairs,
-- peak vs off-peak comparison.
+- journeys by mode (raw),
+- journeys by time — bus boarding hour vs rail exit hour,
+- journeys by weekday,
+- top origin and destination values including Bus, Unstarted, Unfinished,
+- data quality issues — records affected per rule.
 
-**Cleaning:**
+**Cleaning (`02_data_clean.py`):**
 
 - remove Unstarted — no tap-in, origin unknown,
 - remove Unfinished — no tap-out, destination unknown,
-- keep Bus — no station OD but valid demand signal (route, boarding time, day).
+- remove Not Applicable — system could not record destination,
+- keep Bus — no station OD but valid demand signal (route, boarding time, day); boarding ≈ departure at network level,
+- split into `bus_clean.csv` (1.77M rows) and `rail_clean.csv` (765k rows).
+
+**Clean exploration (`02_data_clean_plots.py`):**
+
+Visuals:
+
+- journeys by time — bus + rail stacked,
+- journeys by weekday — bus + rail stacked,
+- station imbalance scatter — departures vs arrivals per station,
+- station imbalance bars — top 20 stations grouped.
 
 ## 03 — Feature Engineering
 
