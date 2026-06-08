@@ -1,32 +1,28 @@
 #!/usr/bin/env python3
 """
-Clean the raw TfL journey data.
+Clean the raw TfL journey data and split into bus and rail datasets.
 
-Cleaning rules (grounded in findings from 01_data_exploration.py):
+Cleaning rules (grounded in findings from 02_data_exploration_raw.py):
 
-  1. Remove Unstarted  — StartStn == 'Unstarted'. Passenger tapped out only;
-                         no origin available. Useless for any analysis.
+  1. Remove Unstarted      — StartStn == 'Unstarted'. No origin available.
+  2. Remove Unfinished     — EndStation == 'Unfinished'. No destination available.
+  3. Remove Not Applicable — EndStation == 'Not Applicable'. No destination available.
 
-  2. Remove Unfinished — EndStation == 'Unfinished'. Passenger tapped in only;
-                         no destination available. Useless for OD analysis.
+Bus journeys are kept but split into a separate file. They carry valid demand
+information (route, boarding time, day) but have no station OD.
 
-Bus journeys are kept. They have no station OD but carry valid demand
-information: route (RouteID), boarding time (EntTime), day, and ticket type.
-Boarding ≈ departure at the network level, so bus demand patterns are valid.
-
-Derived columns added for downstream scripts:
+Derived columns added:
 
   mode         — primary mode (Bus, Underground, DLR, National Rail, …)
-  journey_hour — hour of the journey event (0–23):
-                   bus  → boarding hour from EntTime
-                   rail → exit hour from ExTime (wraps overnight services)
+  journey_hour — bus: boarding hour (EntTime); rail: exit hour (ExTime)
   period       — AM peak / PM peak / Off-peak / Night
 
 Input : data/Nov09JnyExport.csv
-Output: data/processed/journeys_clean.csv
+Output: data/processed/bus_clean.csv
+        data/processed/rail_clean.csv
 
 Run from the project root:
-    python scripts/02_clean_data.py
+    python scripts/02_data_clean.py
 """
 
 from pathlib import Path
@@ -38,10 +34,11 @@ import pandas as pd
 # Paths
 # ---------------------------------------------------------------------------
 
-ROOT = Path(__file__).resolve().parents[1]
-RAW_PATH = ROOT / "data" / "Nov09JnyExport.csv"
-OUT_PATH  = ROOT / "data" / "processed" / "journeys_clean.csv"
-OUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+ROOT      = Path(__file__).resolve().parents[1]
+RAW_PATH  = ROOT / "data" / "Nov09JnyExport.csv"
+BUS_PATH  = ROOT / "data" / "processed" / "bus_clean.csv"
+RAIL_PATH = ROOT / "data" / "processed" / "rail_clean.csv"
+BUS_PATH.parent.mkdir(parents=True, exist_ok=True)
 
 # ---------------------------------------------------------------------------
 # Load
@@ -65,18 +62,19 @@ df.loc[df["SubSystem"].str.contains("LUL"),  "mode"] = "Underground"
 df.loc[df["StartStn"] == "Bus",              "mode"] = "Bus"
 
 # ---------------------------------------------------------------------------
-# Cleaning rules
+# Cleaning
 # ---------------------------------------------------------------------------
 
 rules = {
-    "unstarted":  df["StartStn"] == "Unstarted",
-    "unfinished": df["EndStation"] == "Unfinished",
+    "unstarted":      df["StartStn"] == "Unstarted",
+    "unfinished":     df["EndStation"] == "Unfinished",
+    "not_applicable": df["EndStation"] == "Not Applicable",
 }
 
 print("\n--- Rows removed per rule ---")
 for name, mask in rules.items():
     n = mask.sum()
-    print(f"  {name:<12}  {n:>8,}  ({n / n_raw:.2%})")
+    print(f"  {name:<16}  {n:>8,}  ({n / n_raw:.2%})")
 
 invalid = pd.concat(rules.values(), axis=1).any(axis=1)
 df = df[~invalid].copy()
@@ -86,10 +84,8 @@ print(f"\nTotal removed  : {n_removed:,} ({n_removed / n_raw:.2%})")
 print(f"Rows remaining : {len(df):,} ({len(df) / n_raw:.2%})")
 
 # ---------------------------------------------------------------------------
-# journey_hour
+# Derived columns
 # ---------------------------------------------------------------------------
-# Bus:  use EntTime (boarding = departure); ExTime is always 0 for bus.
-# Rail: use ExTime (tap-out); wrap values > 1440 for overnight services.
 
 bus_mask = df["mode"] == "Bus"
 df["journey_hour"] = np.where(
@@ -97,10 +93,6 @@ df["journey_hour"] = np.where(
     df["EntTime"] // 60,
     (df["ExTime"] % 1440) // 60,
 )
-
-# ---------------------------------------------------------------------------
-# Period label
-# ---------------------------------------------------------------------------
 
 def peak_label(hour):
     if 7 <= hour < 10:
@@ -114,19 +106,17 @@ def peak_label(hour):
 df["period"] = df["journey_hour"].apply(peak_label)
 
 # ---------------------------------------------------------------------------
-# Summary
+# Split and save
 # ---------------------------------------------------------------------------
 
-print("\n--- Rows by mode ---")
-print(df["mode"].value_counts().to_string())
+bus  = df[df["mode"] == "Bus"].copy()
+rail = df[df["mode"] != "Bus"].copy()
 
-print("\n--- Rows by period ---")
-print(df["period"].value_counts().reindex(["AM peak", "Off-peak", "PM peak", "Night"]).to_string())
+print(f"\n--- Split ---")
+print(f"Bus  : {len(bus):,} rows  → {BUS_PATH.relative_to(ROOT)}")
+print(f"Rail : {len(rail):,} rows  → {RAIL_PATH.relative_to(ROOT)}")
+print(f"\nRail modes:\n{rail['mode'].value_counts().to_string()}")
 
-# ---------------------------------------------------------------------------
-# Save
-# ---------------------------------------------------------------------------
-
-df.to_csv(OUT_PATH, index=False)
-print(f"\nSaved {len(df):,} rows → {OUT_PATH.relative_to(ROOT)}")
-print(f"Columns: {list(df.columns)}")
+bus.to_csv(BUS_PATH,   index=False)
+rail.to_csv(RAIL_PATH, index=False)
+print("\nDone.")
