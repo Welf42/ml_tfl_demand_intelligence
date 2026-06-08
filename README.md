@@ -35,7 +35,7 @@ Classical/non-ML parts:
 - OD aggregation,
 - mode counts,
 - simple peak/off-peak summaries,
-- SQL/pandas groupby analysis.
+- pandas groupby analysis.
 
 ## ML / analytics tasks
 
@@ -47,16 +47,21 @@ Classical/non-ML parts:
 | Demand count prediction | regression |
 | Mode pattern analysis | segmentation / classification |
 
-## Phase 1 — Data understanding
+---
 
-Tasks:
+## 01 — Problem Framing
 
-- inspect journey records,
-- understand available modes,
+See mobility question and use case above.
+
+## 02 — Data
+
+**Exploration:**
+
+- inspect journey records and column types,
+- understand available modes (Bus, Underground, DLR, National Rail, Overground, Tram),
 - inspect origin/destination fields,
 - inspect temporal fields,
-- check missing values,
-- standardize station names,
+- check missing and anomalous values,
 - create peak/off-peak labels.
 
 Questions:
@@ -76,9 +81,17 @@ Visuals:
 - top OD pairs,
 - peak vs off-peak comparison.
 
-## Phase 2 — OD matrix
+**Cleaning:**
 
-Create origin-destination matrix:
+- remove Unstarted — no tap-in, origin unknown,
+- remove Unfinished — no tap-out, destination unknown,
+- keep Bus — no station OD but valid demand signal (route, boarding time, day).
+
+## 03 — Feature Engineering
+
+**OD analysis:**
+
+Origin-destination matrix:
 
 | Origin | Destination | Trips | Mode | Period |
 |---|---|---:|---|---|
@@ -96,13 +109,9 @@ Visuals:
 
 - OD heatmap,
 - top 20 OD bar chart,
-- Sankey diagram by mode,
-- chord diagram if useful,
-- map if coordinates are available.
+- Sankey diagram by mode.
 
-## Phase 3 — Demand segmentation
-
-Station-level features:
+**Station features:**
 
 | Feature | Meaning |
 |---|---|
@@ -115,6 +124,16 @@ Station-level features:
 | transfer_proxy | high mixed-mode demand |
 | peak_ratio | peak demand / total demand |
 
+## 04 — Baseline Model
+
+- demand threshold — classify stations above the 80th percentile of total journeys as high-demand,
+- majority class — predict the most frequent class for all stations,
+- establishes minimum RMSE / F1 that any model must beat.
+
+## 05 — Model
+
+**Segmentation:**
+
 Station clusters:
 
 | Cluster | Interpretation |
@@ -125,53 +144,44 @@ Station clusters:
 | local stops | low/moderate demand |
 | mixed-use areas | balanced demand |
 
-## Phase 4 — Predictive task
+Models: k-means, hierarchical clustering.
+
+**Prediction:**
 
 > Predict whether a station or OD pair is high-demand during rush hour.
-
-Target options:
 
 | Target | Type |
 |---|---|
 | high_demand_station | classification |
 | high_demand_od_pair | classification |
 | journey_count | regression |
-| mode_choice | classification |
 
 Features:
 
-- hour,
-- period,
-- mode,
-- origin frequency,
-- destination frequency,
+- hour, period, mode,
+- origin frequency, destination frequency,
 - historical OD count,
-- peak/off-peak label,
 - station cluster,
-- weekday/weekend if available.
+- weekday/weekend.
 
-Models:
+Models: logistic regression, random forest, gradient boosting.
 
-- logistic regression,
-- decision tree,
-- random forest,
-- gradient boosting.
+## 06 — Evaluation
 
-Evaluation:
+- precision, recall, F1, confusion matrix,
+- RMSE on journey count regression,
+- cluster quality — silhouette score, inertia,
+- segment-level error analysis (by mode, period, station type).
 
-- precision,
-- recall,
-- F1,
-- confusion matrix,
-- top-k demand capture.
-
-## Phase 5 — Transport decision layer
+## 07 — Decision Layer
 
 1. **Peak corridor map** — identifies strongest morning/evening OD flows
 2. **Station archetype dashboard** — classifies stations by demand pattern
 3. **High-demand warning** — flags stations or OD pairs likely to experience peak demand
 4. **Mode comparison** — shows how bus, Tube, DLR, Overground patterns differ
 5. **Planning notes** — identifies where frequency, capacity, or station management could be studied further
+
+---
 
 ## Data
 
