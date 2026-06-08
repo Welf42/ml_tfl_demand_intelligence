@@ -1,26 +1,26 @@
 #!/usr/bin/env python3
 """
-Clean the raw TfL journey data and produce a rail-ready dataset.
+Clean the raw TfL journey data.
 
-Cleaning rules (each grounded in findings from 01_data_exploration.py):
+Cleaning rules (grounded in findings from 01_data_exploration.py):
 
-  1. Remove Bus journeys  — StartStn == 'Bus' or SubSystem contains 'LTB'.
-                            No entry/exit time recorded; no meaningful OD info.
+  1. Remove Unstarted  — StartStn == 'Unstarted'. Passenger tapped out only;
+                         no origin available. Useless for any analysis.
 
-  2. Remove Unstarted     — StartStn == 'Unstarted'. Passenger tapped out only;
-                            no origin station available for OD analysis.
+  2. Remove Unfinished — EndStation == 'Unfinished'. Passenger tapped in only;
+                         no destination available. Useless for OD analysis.
 
-  3. Remove Unfinished    — EndStation == 'Unfinished'. Passenger tapped in only;
-                            no destination station available for OD analysis.
-
-  4. Remove zero ExTime   — ExTime == 0 for non-bus rows. Exit time not recorded;
-                            unusable for temporal analysis.
+Bus journeys are kept. They have no station OD but carry valid demand
+information: route (RouteID), boarding time (EntTime), day, and ticket type.
+Boarding ≈ departure at the network level, so bus demand patterns are valid.
 
 Derived columns added for downstream scripts:
 
-  mode        — primary mode from SubSystem (Underground, DLR, National Rail, …)
-  exit_hour   — hour of exit (0–23), wrapping overnight services past midnight
-  period      — AM peak / PM peak / Off-peak / Night label
+  mode         — primary mode (Bus, Underground, DLR, National Rail, …)
+  journey_hour — hour of the journey event (0–23):
+                   bus  → boarding hour from EntTime
+                   rail → exit hour from ExTime (wraps overnight services)
+  period       — AM peak / PM peak / Off-peak / Night
 
 Input : data/Nov09JnyExport.csv
 Output: data/processed/journeys_clean.csv
@@ -31,6 +31,7 @@ Run from the project root:
 
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 # ---------------------------------------------------------------------------
@@ -68,16 +69,14 @@ df.loc[df["StartStn"] == "Bus",              "mode"] = "Bus"
 # ---------------------------------------------------------------------------
 
 rules = {
-    "bus_journey":    df["mode"] == "Bus",
-    "unstarted":      df["StartStn"] == "Unstarted",
-    "unfinished":     df["EndStation"] == "Unfinished",
-    "zero_exit_time": (df["ExTime"] == 0) & (df["mode"] != "Bus"),
+    "unstarted":  df["StartStn"] == "Unstarted",
+    "unfinished": df["EndStation"] == "Unfinished",
 }
 
 print("\n--- Rows removed per rule ---")
 for name, mask in rules.items():
     n = mask.sum()
-    print(f"  {name:<20}  {n:>8,}  ({n / n_raw:.2%})")
+    print(f"  {name:<12}  {n:>8,}  ({n / n_raw:.2%})")
 
 invalid = pd.concat(rules.values(), axis=1).any(axis=1)
 df = df[~invalid].copy()
@@ -87,10 +86,21 @@ print(f"\nTotal removed  : {n_removed:,} ({n_removed / n_raw:.2%})")
 print(f"Rows remaining : {len(df):,} ({len(df) / n_raw:.2%})")
 
 # ---------------------------------------------------------------------------
-# Derived columns
+# journey_hour
 # ---------------------------------------------------------------------------
+# Bus:  use EntTime (boarding = departure); ExTime is always 0 for bus.
+# Rail: use ExTime (tap-out); wrap values > 1440 for overnight services.
 
-df["exit_hour"] = (df["ExTime"] % 1440) // 60
+bus_mask = df["mode"] == "Bus"
+df["journey_hour"] = np.where(
+    bus_mask,
+    df["EntTime"] // 60,
+    (df["ExTime"] % 1440) // 60,
+)
+
+# ---------------------------------------------------------------------------
+# Period label
+# ---------------------------------------------------------------------------
 
 def peak_label(hour):
     if 7 <= hour < 10:
@@ -101,7 +111,17 @@ def peak_label(hour):
         return "Night"
     return "Off-peak"
 
-df["period"] = df["exit_hour"].apply(peak_label)
+df["period"] = df["journey_hour"].apply(peak_label)
+
+# ---------------------------------------------------------------------------
+# Summary
+# ---------------------------------------------------------------------------
+
+print("\n--- Rows by mode ---")
+print(df["mode"].value_counts().to_string())
+
+print("\n--- Rows by period ---")
+print(df["period"].value_counts().reindex(["AM peak", "Off-peak", "PM peak", "Night"]).to_string())
 
 # ---------------------------------------------------------------------------
 # Save
