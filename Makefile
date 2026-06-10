@@ -26,8 +26,8 @@ pipeline: install data/processed figures models
 # 	$(PYTHON) scripts/02_data_raw_plots.py
 	$(PYTHON) scripts/02_data_clean.py
 	$(PYTHON) scripts/02_data_clean_plots.py
-# 	$(PYTHON) scripts/03_feature_engineering_od_analysis.py
-# 	$(PYTHON) scripts/03_feature_engineering_stations.py
+	$(PYTHON) scripts/03_feature_od_analysis.py
+	$(PYTHON) scripts/03_feature_stations.py
 # 	$(PYTHON) scripts/04_model_baseline.py
 # 	$(PYTHON) scripts/05_model_segmentation.py
 # 	$(PYTHON) scripts/05_model_prediction.py

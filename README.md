@@ -99,31 +99,39 @@ Origin-destination matrix:
 
 Analyses:
 
-- top OD pairs,
-- AM peak OD flows,
-- PM peak OD flows,
-- directional imbalance,
-- mode-specific OD flows,
-- corridor concentration.
+- top OD pairs overall,
+- AM vs PM peak OD flows,
+- directional imbalance per corridor,
+- demand concentration by station pair.
 
 Visuals:
 
-- OD heatmap,
-- top 20 OD bar chart,
-- Sankey diagram by mode.
+- top 20 OD pairs bar chart,
+- AM vs PM peak top pairs side-by-side,
+- directional imbalance ratio per corridor,
+- OD heatmap — top 20 origins × top 20 destinations.
 
-**Station features:**
+**Station features (`03_feature_stations.py`):**
 
 | Feature | Meaning |
 |---|---|
-| total_departures | origin demand |
-| total_arrivals | destination demand |
-| am_peak_departures | morning origin intensity |
-| pm_peak_arrivals | evening destination intensity |
-| mode_share_bus | bus share |
-| mode_share_tube | Tube share |
-| transfer_proxy | high mixed-mode demand |
-| peak_ratio | peak demand / total demand |
+| total_departures | journeys starting at this station |
+| total_arrivals | journeys ending at this station |
+| total_demand | total_departures + total_arrivals |
+| am_peak_departures | AM peak (7–9h) origin intensity |
+| pm_peak_arrivals | PM peak (17–19h) destination intensity |
+| peak_ratio | (am_dep + pm_arr) / total_demand |
+| imbalance_ratio | (departures − arrivals) / total_demand |
+| dominant_mode | most frequent mode at station |
+| mode_diversity | distinct modes present (transfer proxy) |
+| mode_share_* | departure fraction per mode |
+
+Visuals:
+
+- top 20 stations by total demand,
+- AM peak departures vs PM peak arrivals scatter,
+- peak ratio distribution across all stations,
+- mode share stacked bars — top 20 stations.
 
 ## 04 — Baseline Model
 
