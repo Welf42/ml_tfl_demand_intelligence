@@ -147,56 +147,38 @@ stations.to_csv(FEAT_PATH)
 print(f"\nSaved: {FEAT_PATH.relative_to(ROOT)}  ({len(stations)} rows)")
 
 # ---------------------------------------------------------------------------
-# 1. Top 20 stations by total demand
-# ---------------------------------------------------------------------------
-
-top20 = stations.nlargest(20, "total_demand").sort_values("total_demand")
-
-fig, ax = plt.subplots(figsize=(10, 7))
-bars = ax.barh(top20.index, top20["total_demand"], color=CYAN, height=0.7, edgecolor=BG)
-for bar, val in zip(bars, top20["total_demand"]):
-    ax.text(
-        val + top20["total_demand"].max() * 0.01,
-        bar.get_y() + bar.get_height() / 2,
-        f"{val:,}", va="center", ha="left", fontsize=8, color=FG,
-    )
-ax.set_title("Top 20 stations by total demand — rail / tube")
-ax.set_xlabel("Total journeys (departures + arrivals)")
-ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f"{int(x):,}"))
-ax.set_xlim(0, top20["total_demand"].max() * 1.18)
-fig.tight_layout()
-fig.savefig(FIGURES_DIR / "journey_station_top20.png", dpi=200, bbox_inches="tight", facecolor=BG)
-plt.close(fig)
-print("Saved: journey_station_top20.png")
-
-# ---------------------------------------------------------------------------
-# 2. AM peak departures vs PM peak arrivals — commuter flow scatter
+# 1. AM peak departures vs PM peak arrivals — commuter flow scatter
 # ---------------------------------------------------------------------------
 
 # Only stations with enough demand to be meaningful
 active = stations[stations["total_demand"] >= 200].copy()
 
-# Label the four quadrants
-q_dep = active["am_peak_departures"].median()
-q_arr = active["pm_peak_arrivals"].median()
+# Bubble size scaled to total demand
+size_min, size_max = 20, 600
+d = active["total_demand"]
+active["dot_size"] = size_min + (d - d.min()) / (d.max() - d.min()) * (size_max - size_min)
 
-fig, ax = plt.subplots(figsize=(9, 8))
+lim = max(active["am_peak_departures"].max(), active["pm_peak_arrivals"].max()) * 1.1
+
+fig, ax = plt.subplots(figsize=(9, 9))
+
 ax.scatter(
     active["am_peak_departures"], active["pm_peak_arrivals"],
-    c=active["total_demand"], cmap="YlOrRd",
-    s=30, alpha=0.8, zorder=3, edgecolors="none",
+    c=CYAN, s=active["dot_size"],
+    alpha=0.6, zorder=3, edgecolors=BG, linewidths=0.4,
 )
 
-# label top 15 by total demand
-top_labels = active.nlargest(15, "total_demand")
-for stn, row in top_labels.iterrows():
+# Diagonal reference line (y = x → symmetric AM/PM flow)
+ax.plot([0, lim], [0, lim], color=FAINT, linewidth=1, linestyle="--", zorder=2)
+
+# Labels for top 20 stations by total demand
+for stn, row in active.nlargest(20, "total_demand").iterrows():
     ax.annotate(stn, xy=(row["am_peak_departures"], row["pm_peak_arrivals"]),
                 xytext=(5, 3), textcoords="offset points", fontsize=7, color=FG)
 
-ax.axvline(q_dep, color=FAINT, linewidth=0.8, linestyle="--")
-ax.axhline(q_arr, color=FAINT, linewidth=0.8, linestyle="--")
-
-ax.set_title("AM peak departures vs PM peak arrivals\n(stations with ≥ 200 total journeys)")
+ax.set_xlim(0, lim)
+ax.set_ylim(0, lim)
+ax.set_title("AM peak departures vs PM peak arrivals\n(bubble size = total demand)")
 ax.set_xlabel("AM peak departures")
 ax.set_ylabel("PM peak arrivals")
 ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f"{int(x):,}"))
@@ -207,7 +189,7 @@ plt.close(fig)
 print("Saved: journey_station_am_pm_scatter.png")
 
 # ---------------------------------------------------------------------------
-# 3. Peak ratio distribution
+# 2. Peak ratio distribution
 # ---------------------------------------------------------------------------
 
 pr = stations["peak_ratio"].dropna()
@@ -227,38 +209,66 @@ plt.close(fig)
 print("Saved: journey_station_peak_ratio.png")
 
 # ---------------------------------------------------------------------------
-# 4. Mode share — top 20 stations stacked bars
+# 3. Station imbalance scatter — total departures vs total arrivals
 # ---------------------------------------------------------------------------
 
-share_cols = [f"mode_share_{m.lower().replace(' ', '_')}" for m in MODES
-              if f"mode_share_{m.lower().replace(' ', '_')}" in stations.columns]
+top_origins      = rail["StartStn"].value_counts().head(20)
+top_destinations = rail["EndStation"].value_counts().head(20)
+top_stns         = top_origins.index.union(top_destinations.index)
 
-top20_share = stations.nlargest(20, "total_demand").sort_values("total_demand")
-share_data  = top20_share[share_cols].copy()
-share_data.columns = [c.replace("mode_share_", "").replace("_", " ").title()
-                      for c in share_data.columns]
+stn_df = pd.DataFrame({
+    "departures": top_origins.reindex(top_stns, fill_value=0),
+    "arrivals":   top_destinations.reindex(top_stns, fill_value=0),
+})
 
-fig, ax = plt.subplots(figsize=(10, 7))
-bottom = np.zeros(len(share_data))
+lim = max(stn_df["departures"].max(), stn_df["arrivals"].max()) * 1.05
 
-for col in share_data.columns:
-    raw_key = col.lower().replace(" ", "_")
-    # match back to original mode name for colour lookup
-    mode_key = next((m for m in MODES if m.lower().replace(" ", "_") == raw_key), None)
-    color = MODE_COLORS.get(mode_key, FAINT) if mode_key else FAINT
-    vals = share_data[col].values
-    ax.barh(share_data.index, vals, left=bottom,
-            color=color, edgecolor=BG, height=0.7, label=col)
-    bottom += vals
-
-ax.set_title("Mode share — top 20 stations by total demand")
-ax.set_xlabel("Share of departures")
-ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f"{x:.0%}"))
-ax.legend(fontsize=8, bbox_to_anchor=(1.01, 1), loc="upper left", borderaxespad=0)
+fig, ax = plt.subplots(figsize=(8, 8))
+ax.scatter(stn_df["departures"], stn_df["arrivals"], color=CYAN, s=60, zorder=3)
+ax.plot([0, lim], [0, lim], color=FAINT, linewidth=1, linestyle="--", zorder=2)
+for stn, row in stn_df.iterrows():
+    ax.annotate(stn, xy=(row["departures"], row["arrivals"]),
+                xytext=(5, 3), textcoords="offset points", fontsize=7, color=FG)
+ax.set_xlim(0, lim)
+ax.set_ylim(0, lim)
+ax.set_title("Departures vs arrivals — rail / tube (top stations)")
+ax.set_xlabel("Departures")
+ax.set_ylabel("Arrivals")
+ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f"{int(x):,}"))
+ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f"{int(x):,}"))
 fig.tight_layout()
-fig.savefig(FIGURES_DIR / "journey_station_mode_share.png", dpi=200, bbox_inches="tight", facecolor=BG)
+fig.savefig(FIGURES_DIR / "journey_station_imbalance_scatter.png", dpi=200, bbox_inches="tight", facecolor=BG)
 plt.close(fig)
-print("Saved: journey_station_mode_share.png")
+print("Saved: journey_station_imbalance_scatter.png")
+
+# ---------------------------------------------------------------------------
+# 4. Station imbalance bars — grouped departures vs arrivals top 20
+# ---------------------------------------------------------------------------
+
+top20_stn = (
+    stn_df.assign(total=stn_df["departures"] + stn_df["arrivals"])
+    .nlargest(20, "total")
+    .sort_values("total")
+)
+
+y      = np.arange(len(top20_stn))
+height = 0.35
+
+fig, ax = plt.subplots(figsize=(10, 8))
+ax.barh(y + height / 2, top20_stn["departures"], height=height,
+        color=CYAN,  edgecolor=BG, label="Departures")
+ax.barh(y - height / 2, top20_stn["arrivals"],   height=height,
+        color=GREEN, edgecolor=BG, label="Arrivals")
+ax.set_yticks(y)
+ax.set_yticklabels(top20_stn.index, fontsize=8)
+ax.set_title("Departures vs arrivals — top 20 stations")
+ax.set_xlabel("Journeys")
+ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f"{int(x):,}"))
+ax.legend(fontsize=9)
+fig.tight_layout()
+fig.savefig(FIGURES_DIR / "journey_station_imbalance_bars.png", dpi=200, bbox_inches="tight", facecolor=BG)
+plt.close(fig)
+print("Saved: journey_station_imbalance_bars.png")
 
 # ---------------------------------------------------------------------------
 # Summary

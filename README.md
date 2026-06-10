@@ -84,9 +84,7 @@ Visuals:
 Visuals:
 
 - journeys by time — bus + rail stacked,
-- journeys by weekday — bus + rail stacked,
-- station imbalance scatter — departures vs arrivals per station,
-- station imbalance bars — top 20 stations grouped.
+- journeys by weekday — bus + rail stacked.
 
 ## 03 — Feature Engineering
 
@@ -128,10 +126,10 @@ Visuals:
 
 Visuals:
 
-- top 20 stations by total demand,
 - AM peak departures vs PM peak arrivals scatter,
 - peak ratio distribution across all stations,
-- mode share stacked bars — top 20 stations.
+- station imbalance scatter — total departures vs arrivals,
+- station imbalance bars — top 20 stations grouped.
 
 ## 04 — Baseline Model
 

@@ -22,6 +22,7 @@ Run from the project root:
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 import matplotlib.ticker as mticker
 import numpy as np
 import pandas as pd
@@ -179,7 +180,8 @@ corridors = (
     merged.sort_values("total", ascending=False)
     .drop_duplicates("corridor_key")
     .dropna(subset=["imbalance"])
-    .nlargest(20, "total")
+    .query("total >= 100")          # exclude low-volume corridors
+    .nlargest(20, "imbalance")      # rank by imbalance, not volume
     .sort_values("imbalance")
 )
 corridors["label"] = corridors["StartStn"] + " ↔ " + corridors["EndStation"]
@@ -189,18 +191,23 @@ print(corridors[["label", "count", "reverse_count", "imbalance"]]
       .rename(columns={"count": "dominant", "reverse_count": "reverse"})
       .to_string(index=False))
 
-colors = [RED if v > 2 else CYAN for v in corridors["imbalance"]]
+# Continuous color gradient CYAN → RED scaled to imbalance range
+import matplotlib.colors as mcolors
+cmap_dir = mcolors.LinearSegmentedColormap.from_list("dir", [CYAN, AMBER, RED])
+norm = plt.Normalize(corridors["imbalance"].min(), corridors["imbalance"].max())
+colors = [cmap_dir(norm(v)) for v in corridors["imbalance"]]
 
 fig, ax = plt.subplots(figsize=(10, 7))
 bars = ax.barh(corridors["label"], corridors["imbalance"],
                color=colors, height=0.7, edgecolor=BG)
-for bar, val in zip(bars, corridors["imbalance"]):
+for bar, row in zip(bars, corridors.itertuples()):
     ax.text(
-        val + 0.05, bar.get_y() + bar.get_height() / 2,
-        f"{val:.1f}×", va="center", ha="left", fontsize=8, color=FG,
+        row.imbalance + 0.05, bar.get_y() + bar.get_height() / 2,
+        f"{row.imbalance:.1f}×  ({row.count} / {row.reverse_count})",
+        va="center", ha="left", fontsize=7.5, color=FG,
     )
 ax.axvline(1, color=FAINT, linewidth=1, linestyle="--")
-ax.set_title("Directional imbalance — top 20 corridors by total demand\n(red = ratio > 2×)")
+ax.set_title("Directional imbalance — top 20 corridors by ratio\n(min. 100 total journeys · dominant / reverse counts shown)")
 ax.set_xlabel("Imbalance ratio  (dominant direction / reverse)")
 fig.tight_layout()
 fig.savefig(FIGURES_DIR / "journey_od_directional.png", dpi=200, bbox_inches="tight", facecolor=BG)
@@ -228,11 +235,13 @@ heatmap_data = (
     .reindex(index=top20_origins, columns=top20_dests, fill_value=0)
 )
 
+dark_cyan = mcolors.LinearSegmentedColormap.from_list("dark_cyan", [BG, CYAN])
+
 fig, ax = plt.subplots(figsize=(12, 10))
 sns.heatmap(
     heatmap_data,
     ax=ax,
-    cmap="YlOrRd",
+    cmap=dark_cyan,
     linewidths=0.3,
     linecolor=BG,
     annot=False,
